@@ -246,7 +246,7 @@ void CfcalcDlg::UpdateResult()
     else {
         sprintf_s(strings[n++], 80, "Result: %.2Lf", fVal);
         if (iVal != 0) {
-            for (int i = 0; i < ((iVal < 19) ? iVal : 19); i++)
+            for (int i = 0; i < ((iVal < 20) ? iVal : 20); i++)
                 sprintf_s(strings[n++], 80, "Int Value gy%d: %lld", i, iVal);
         }
     }
@@ -341,7 +341,7 @@ void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 void CfcalcDlg::OnBnClickedOk()
 {
-    
+    // Перехватываем нажатие Enter (IDOK) и вызываем UpdateResult вместо закрытия
     UpdateResult();
 }
 

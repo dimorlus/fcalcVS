@@ -1,5 +1,3 @@
-// fcalcDlg.cpp : implementation file
-//
 #include "pch.h"
 #include "framework.h"
 #include "fcalc.h"
@@ -10,6 +8,8 @@
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
+
+const TCHAR* CfcalcDlg::REG_KEY = _T("Software\\MyCalcApp");
 
 CfcalcDlg* CfcalcDlg::g_pDialog = nullptr;
 
@@ -35,6 +35,15 @@ CfcalcDlg::CfcalcDlg(CWnd* pParent /*=nullptr*/)
     ccalc = new calculator(PAS | SCI | UPCASE);
     g_pDialog = this;
     opts.options = PAS | SCI | UPCASE;
+    m_hEditBrush = CreateSolidBrush(RGB(255, 255, 255));
+}
+
+CfcalcDlg::~CfcalcDlg()
+{
+    if (m_hEditBrush)
+        DeleteObject(m_hEditBrush);
+    if (ccalc)
+        delete ccalc;
 }
 
 void CfcalcDlg::DoDataExchange(CDataExchange* pDX)
@@ -42,17 +51,27 @@ void CfcalcDlg::DoDataExchange(CDataExchange* pDX)
     CDialogEx::DoDataExchange(pDX);
     DDX_Control(pDX, IDC_COMBO_EXPR, m_comboExpr);
     DDX_Control(pDX, IDC_EDIT_RESULT, m_editResult);
+    if (pDX->m_bSaveAndValidate && !m_comboExpr.m_hWnd) {
+        TRACE(_T("m_comboExpr is not initialized!\n"));
+    }
 }
 
 BEGIN_MESSAGE_MAP(CfcalcDlg, CDialogEx)
     ON_WM_PAINT()
     ON_WM_QUERYDRAGICON()
     ON_CBN_EDITCHANGE(IDC_COMBO_EXPR, &CfcalcDlg::OnCbnEditChangeComboExpr)
+    ON_CBN_SELENDOK(IDC_COMBO_EXPR, &CfcalcDlg::OnCbnSelendokComboExpr)
     ON_WM_SIZE()
     ON_COMMAND(ID_CALC_PASSTYLE, &CfcalcDlg::OnCalcPasStyle)
     ON_COMMAND(ID_CALC_CASESENSETIVE, &CfcalcDlg::OnCalcCaseSensetive)
     ON_COMMAND(ID_CALC_FORCEDFLOAT, &CfcalcDlg::OnCalcForcedFloat)
     ON_COMMAND(ID_FORMAT_SCIENTIFIC, &CfcalcDlg::OnFormatScientific)
+    ON_WM_CTLCOLOR()
+    ON_WM_NCPAINT()
+    ON_WM_ERASEBKGND()
+    ON_WM_CLOSE()
+    ON_WM_KEYDOWN()
+    ON_BN_CLICKED(IDOK, &CfcalcDlg::OnBnClickedOk) // Перехват IDOK
 END_MESSAGE_MAP()
 
 BOOL CfcalcDlg::OnInitDialog()
@@ -62,33 +81,48 @@ BOOL CfcalcDlg::OnInitDialog()
     SetIcon(m_hIcon, TRUE);
     SetIcon(m_hIcon, FALSE);
 
-    // Устанавливаем моноширинный шрифт
     CFont font;
     font.CreateFont(
-        20,                        // Высота шрифта
-        0,                         // Ширина
-        0,                         // Угол наклона
-        0,                         // Ориентация
-        FW_NORMAL,                 // Вес
-        FALSE,                     // Курсив
-        FALSE,                     // Подчёркивание
-        FALSE,                     // Зачёркивание
-        ANSI_CHARSET,              // Кодировка
-        OUT_DEFAULT_PRECIS,        // Точность вывода
-        CLIP_DEFAULT_PRECIS,       // Точность обрезки
-        DEFAULT_QUALITY,           // Качество
-        FIXED_PITCH | FF_MODERN,   // Моноширинный шрифт
-        _T("Courier New")          // Название шрифта
+        20,
+        0,
+        0,
+        0,
+        FW_NORMAL,
+        FALSE,
+        FALSE,
+        FALSE,
+        ANSI_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        DEFAULT_QUALITY,
+        FIXED_PITCH | FF_MODERN,
+        _T("Courier New")
     );
     m_comboExpr.SetFont(&font);
     m_editResult.SetFont(&font);
 
+    CFont* pFont = m_editResult.GetFont();
+    LOGFONT lf;
+    pFont->GetLogFont(&lf);
+    HDC hDC = ::GetDC(m_hWnd);
+    HFONT hFont = CreateFontIndirect(&lf);
+    HFONT hOldFont = (HFONT)SelectObject(hDC, hFont);
+    TEXTMETRIC tm;
+    GetTextMetrics(hDC, &tm);
+    m_lineHeight = tm.tmHeight + tm.tmExternalLeading;
+    SelectObject(hDC, hOldFont);
+    DeleteObject(hFont);
+    ::ReleaseDC(m_hWnd, hDC);
+
     m_comboExpr.SetWindowText(_T(""));
     ccalc->addfn("menu", showmenu);
 
+    LoadFromRegistry();
+
     CMenu* pMenu = GetMenu();
     if (pMenu) {
-        pMenu->ModifyMenu(ID_CALC_PASSTYLE, MF_BYCOMMAND | MF_STRING, ID_CALC_PASSTYLE, _T("Pas style"));
+        pMenu->ModifyMenu(ID_CALC_PASSTYLE, MF_BYCOMMAND | MF_STRING, ID_CALC_PASSTYLE,
+            opts.pas ? _T("Pas style") : _T("C style"));
         pMenu->CheckMenuItem(ID_CALC_CASESENSETIVE, MF_BYCOMMAND | (opts.upcase ? MF_CHECKED : MF_UNCHECKED));
         pMenu->CheckMenuItem(ID_CALC_FORCEDFLOAT, MF_BYCOMMAND | (opts.ffloat ? MF_CHECKED : MF_UNCHECKED));
         pMenu->CheckMenuItem(ID_FORMAT_SCIENTIFIC, MF_BYCOMMAND | (opts.scf ? MF_CHECKED : MF_UNCHECKED));
@@ -125,25 +159,48 @@ HCURSOR CfcalcDlg::OnQueryDragIcon()
 
 void CfcalcDlg::OnCbnEditChangeComboExpr()
 {
+    int nLength = m_comboExpr.GetWindowTextLength();
+    m_comboExpr.SetEditSel(nLength, nLength);
     UpdateResult();
+}
+
+void CfcalcDlg::OnCbnSelendokComboExpr()
+{
+    int nLength = m_comboExpr.GetWindowTextLength();
+    m_comboExpr.SetEditSel(nLength, nLength);
 }
 
 void CfcalcDlg::OnSize(UINT nType, int cx, int cy)
 {
     CDialogEx::OnSize(nType, cx, cy);
     if (m_editResult.m_hWnd && m_comboExpr.m_hWnd) {
-        m_comboExpr.MoveWindow(7, 7, 358, 50);    // Начальные координаты ComboBox
-        m_editResult.MoveWindow(7, 40, 358, cy - 50 - 7);  // Начальные координаты Edit
+        CRect comboRect;
+        m_comboExpr.GetWindowRect(&comboRect);
+        ScreenToClient(&comboRect);
+        int comboHeight = comboRect.Height();
+        m_comboExpr.MoveWindow(0, 0, cx, comboHeight);
+        m_editResult.MoveWindow(0, comboHeight + 1, cx, cy - comboHeight - 1);
+        CRect editRect;
+        m_editResult.GetWindowRect(&editRect);
+        ScreenToClient(&editRect);
+        int contentHeight = min(cy - comboHeight - 1, m_lineHeight * 20);
+        m_editResult.MoveWindow(0, comboHeight + 1, cx, contentHeight);
     }
 }
 
 void CfcalcDlg::UpdateResult()
 {
+    if (!m_comboExpr.m_hWnd) {
+        TRACE(_T("m_comboExpr is not valid in UpdateResult!\n"));
+        return;
+    }
+
     CString expr;
     m_comboExpr.GetWindowText(expr);
+    TRACE(_T("UpdateResult: Input expression = '%s'\n"), expr);
     if (expr.IsEmpty()) {
         expr = _T("");
-        sprintf_s(strings[0], 80, "%66.66s ", " "); // Пустая строка при запуске
+        sprintf_s(strings[0], 80, "%66.66s ", " ");
     }
 
     SetWindowText(expr);
@@ -154,15 +211,19 @@ void CfcalcDlg::UpdateResult()
     memset(strings, 0, sizeof(strings));
     strncpy_s(exprBuf, CStringA(expr), sizeof(exprBuf) - 1);
     exprBuf[sizeof(exprBuf) - 1] = '\0';
+    TRACE(_T("UpdateResult: Converted to exprBuf = '%hs'\n"), exprBuf);
 
     ccalc->syntax(opts.options);
+    TRACE(_T("UpdateResult: Before evaluate, opts.options = %d\n"), opts.options);
     fVal = ccalc->evaluate(exprBuf, &iVal);
+    TRACE(_T("UpdateResult: After evaluate, fVal = %Lf, iVal = %lld\n"), fVal, iVal);
 
     int scfg = ccalc->issyntax();
     int n = 0;
 
     if (isnan(fVal)) {
         if (ccalc->error()[0]) {
+            TRACE(_T("UpdateResult: Error detected: %s\n"), ccalc->error());
             if (ccalc->errps() < 64) {
                 char binstr[80];
                 memset(binstr, '-', sizeof(binstr));
@@ -183,25 +244,10 @@ void CfcalcDlg::UpdateResult()
         }
     }
     else {
-        sprintf_s(strings[n++], 80, "Result gy: %.2Lf", fVal);
+        sprintf_s(strings[n++], 80, "Result: %.2Lf", fVal);
         if (iVal != 0) {
-            sprintf_s(strings[n++], 80, "Int Value gy1: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy2: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy3: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy4: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy5: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy6: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy7: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy8: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy9: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy10: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy11: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy12: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy13: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy14: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy15: %lld", iVal);
-            sprintf_s(strings[n++], 80, "Int Value gy16: %lld", iVal);
-
+            for (int i = 0; i < ((iVal < 19) ? iVal : 19); i++)
+                sprintf_s(strings[n++], 80, "Int Value gy%d: %lld", i, iVal);
         }
     }
 
@@ -220,36 +266,23 @@ void CfcalcDlg::UpdateResult()
         lineCount++;
     }
     m_editResult.SetWindowText(resultText);
+    TRACE(_T("UpdateResult: SetWindowText completed\n"));
 
     int index = m_comboExpr.FindStringExact(-1, expr);
     if (index == CB_ERR) {
         m_comboExpr.InsertString(0, expr);
         if (m_comboExpr.GetCount() > 20) m_comboExpr.DeleteString(20);
     }
-    // Адаптируем высоту окна по количеству строк
-    CFont* pFont = m_editResult.GetFont();
-    LOGFONT lf;
-    pFont->GetLogFont(&lf);
-    HDC hDC = ::GetDC(m_hWnd);
-    HFONT hFont = CreateFontIndirect(&lf);
-    HFONT hOldFont = (HFONT)SelectObject(hDC, hFont);
-    TEXTMETRIC tm;
-    GetTextMetrics(hDC, &tm);
-    int lineHeight = tm.tmHeight + tm.tmExternalLeading; // Высота строки
-    SelectObject(hDC, hOldFont);
-    DeleteObject(hFont);
-    ::ReleaseDC(m_hWnd, hDC);
 
-
-    int margin = 0; // Убираем лишний запас, чтобы убрать "мёртвую полосу"
+    int margin = 0;
     int titleBarHeight = GetSystemMetrics(SM_CYCAPTION);
     int menuHeight = GetMenu() ? GetSystemMetrics(SM_CYMENU) : 0;
     int borderHeight = GetSystemMetrics(SM_CYFRAME) * 2;
+    int comboHeight = 40;
 
-    lineHeight = 14;
-    int totalExtraHeight = titleBarHeight + menuHeight + borderHeight + margin + 50; // Учитываем ComboBox (50)
-    int newHeight = totalExtraHeight +30 + (lineHeight * (lineCount ? lineCount : 1));
-    SetWindowPos(nullptr, 0, 0, 388, newHeight, SWP_NOMOVE | SWP_NOZORDER);
+    int totalExtraHeight = titleBarHeight + menuHeight + borderHeight + margin + comboHeight;
+    int newHeight = totalExtraHeight + 4 + (m_lineHeight * (lineCount ? lineCount : 1));
+    SetWindowPos(nullptr, 0, 0, 520, newHeight, SWP_NOMOVE | SWP_NOZORDER);
 }
 
 void CfcalcDlg::OnCalcPasStyle()
@@ -295,4 +328,110 @@ void CfcalcDlg::OnFormatScientific()
         pMenu->CheckMenuItem(ID_FORMAT_SCIENTIFIC, MF_BYCOMMAND | (opts.scf ? MF_CHECKED : MF_UNCHECKED));
     }
     UpdateResult();
+}
+
+void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+    if (nChar == VK_RETURN) {
+        UpdateResult();
+        return;
+    }
+    CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags);
+}
+
+void CfcalcDlg::OnBnClickedOk()
+{
+    
+    UpdateResult();
+}
+
+HBRUSH CfcalcDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+{
+    HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
+    if (pWnd->GetDlgCtrlID() == IDC_EDIT_RESULT) {
+        pDC->SetBkMode(OPAQUE);
+        pDC->SetBkColor(RGB(255, 255, 255));
+        pDC->SetTextColor(RGB(0, 0, 0));
+        return m_hEditBrush;
+    }
+    if (nCtlColor == CTLCOLOR_DLG) {
+        pDC->SetBkColor(RGB(255, 255, 255));
+        return m_hEditBrush;
+    }
+    return hbr;
+}
+
+void CfcalcDlg::OnNcPaint()
+{
+    CDialogEx::OnNcPaint();
+}
+
+BOOL CfcalcDlg::OnEraseBkgnd(CDC* pDC)
+{
+    CRect rect;
+    GetClientRect(&rect);
+    pDC->FillSolidRect(&rect, RGB(255, 255, 255));
+    return TRUE;
+}
+
+void CfcalcDlg::OnClose()
+{
+    SaveToRegistry();
+    CDialogEx::OnClose();
+}
+
+void CfcalcDlg::SaveToRegistry()
+{
+    if (!m_comboExpr.m_hWnd) {
+        TRACE(_T("m_comboExpr is not valid in SaveToRegistry!\n"));
+        return;
+    }
+
+    CRegKey regKey;
+    if (ERROR_SUCCESS == regKey.Create(HKEY_CURRENT_USER, REG_KEY))
+    {
+        int count = m_comboExpr.GetCount();
+        regKey.SetDWORDValue(_T("HistoryCount"), min(count, 20));
+        for (int i = 0; i < min(count, 20); i++)
+        {
+            CString item;
+            m_comboExpr.GetLBText(i, item);
+            CString keyName;
+            keyName.Format(_T("History%d"), i);
+            regKey.SetStringValue(keyName, item);
+        }
+
+        regKey.SetDWORDValue(_T("Options"), opts.options);
+    }
+    regKey.Close();
+}
+
+void CfcalcDlg::LoadFromRegistry()
+{
+    CRegKey regKey;
+    if (ERROR_SUCCESS == regKey.Open(HKEY_CURRENT_USER, REG_KEY, KEY_READ))
+    {
+        DWORD count = 0;
+        regKey.QueryDWORDValue(_T("HistoryCount"), count);
+        for (DWORD i = 0; i < min(count, 20); i++)
+        {
+            CString keyName;
+            keyName.Format(_T("History%d"), i);
+            CString item;
+            ULONG len = 256;
+            if (ERROR_SUCCESS == regKey.QueryStringValue(keyName, item.GetBuffer(len), &len))
+            {
+                item.ReleaseBuffer();
+                m_comboExpr.AddString(item);
+            }
+        }
+
+        DWORD options = 0;
+        if (ERROR_SUCCESS == regKey.QueryDWORDValue(_T("Options"), options))
+        {
+            opts.options = options;
+            ccalc->syntax(opts.options);
+        }
+    }
+    regKey.Close();
 }
