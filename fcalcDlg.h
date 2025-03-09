@@ -1,20 +1,34 @@
+// fcalcDlg.h
 #pragma once
 #include "afxwin.h"
 #include "scalc.h"
+
+#define _AFXDLL
 
 class CfcalcDlg : public CDialogEx
 {
 public:
     CfcalcDlg(CWnd* pParent = nullptr);
-    ~CfcalcDlg();
-    static CfcalcDlg* g_pDialog;
-
-#ifdef AFX_DESIGN_TIME
     enum { IDD = IDD_FCALC_DIALOG };
-#endif
+    static CfcalcDlg* g_pDialog;
 
 protected:
     virtual void DoDataExchange(CDataExchange* pDX);
+    HICON m_hIcon;
+    calculator* ccalc;
+    struct { int options; bool pas, upcase, ffloat, scf; } opts;
+    HBRUSH m_hEditBrush;
+    int m_lineHeight;
+    CComboBox m_comboExpr;
+    CEdit m_editResult;
+    char strings[20][80];
+    static const TCHAR* REG_KEY; // Добавляем static
+
+    virtual BOOL PreTranslateMessage(MSG* pMsg);
+
+    DECLARE_MESSAGE_MAP()
+
+public:
     virtual BOOL OnInitDialog();
     afx_msg void OnPaint();
     afx_msg HCURSOR OnQueryDragIcon();
@@ -30,21 +44,10 @@ protected:
     afx_msg BOOL OnEraseBkgnd(CDC* pDC);
     afx_msg void OnClose();
     afx_msg void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags);
-    afx_msg void OnBnClickedOk(); // Обработчик для IDOK
-    DECLARE_MESSAGE_MAP()
+    afx_msg void OnBnClickedOk();
 
-private:
-    HICON m_hIcon;
-    int m_lineHeight;
-    CComboBox m_comboExpr;
-    CEdit m_editResult;
-    calculator* ccalc;
-    toptions opts;
-    char strings[20][80];
-    HBRUSH m_hEditBrush;
     void UpdateResult();
-
     void SaveToRegistry();
     void LoadFromRegistry();
-    static const TCHAR* REG_KEY;
+    ~CfcalcDlg();
 };

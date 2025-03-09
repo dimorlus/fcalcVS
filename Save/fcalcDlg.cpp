@@ -71,7 +71,7 @@ BEGIN_MESSAGE_MAP(CfcalcDlg, CDialogEx)
     ON_WM_ERASEBKGND()
     ON_WM_CLOSE()
     ON_WM_KEYDOWN()
-    ON_BN_CLICKED(IDOK, &CfcalcDlg::OnBnClickedOk) // Перехват IDOK
+    ON_BN_CLICKED(IDOK, &CfcalcDlg::OnBnClickedOk)
 END_MESSAGE_MAP()
 
 BOOL CfcalcDlg::OnInitDialog()
@@ -168,6 +168,7 @@ void CfcalcDlg::OnCbnSelendokComboExpr()
 {
     int nLength = m_comboExpr.GetWindowTextLength();
     m_comboExpr.SetEditSel(nLength, nLength);
+    // Убираем добавление в историю при выборе из списка
 }
 
 void CfcalcDlg::OnSize(UINT nType, int cx, int cy)
@@ -180,11 +181,6 @@ void CfcalcDlg::OnSize(UINT nType, int cx, int cy)
         int comboHeight = comboRect.Height();
         m_comboExpr.MoveWindow(0, 0, cx, comboHeight);
         m_editResult.MoveWindow(0, comboHeight + 1, cx, cy - comboHeight - 1);
-        CRect editRect;
-        m_editResult.GetWindowRect(&editRect);
-        ScreenToClient(&editRect);
-        int contentHeight = min(cy - comboHeight - 1, m_lineHeight * 20);
-        m_editResult.MoveWindow(0, comboHeight + 1, cx, contentHeight);
     }
 }
 
@@ -266,10 +262,10 @@ void CfcalcDlg::UpdateResult()
         lineCount++;
     }
     m_editResult.SetWindowText(resultText);
-    TRACE(_T("UpdateResult: SetWindowText completed\n"));
+    TRACE(_T("UpdateResult: SetWindowText completed with %d lines\n"), lineCount);
 
     int index = m_comboExpr.FindStringExact(-1, expr);
-    if (index == CB_ERR) {
+    if (index == CB_ERR && !expr.IsEmpty()) {
         m_comboExpr.InsertString(0, expr);
         if (m_comboExpr.GetCount() > 20) m_comboExpr.DeleteString(20);
     }
@@ -281,7 +277,7 @@ void CfcalcDlg::UpdateResult()
     int comboHeight = 40;
 
     int totalExtraHeight = titleBarHeight + menuHeight + borderHeight + margin + comboHeight;
-    int newHeight = totalExtraHeight + 4 + (m_lineHeight * (lineCount ? lineCount : 1));
+    int newHeight = totalExtraHeight + 4 + (m_lineHeight * lineCount);
     SetWindowPos(nullptr, 0, 0, 520, newHeight, SWP_NOMOVE | SWP_NOZORDER);
 }
 
@@ -333,6 +329,15 @@ void CfcalcDlg::OnFormatScientific()
 void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
     if (nChar == VK_RETURN) {
+        CString expr;
+        m_comboExpr.GetWindowText(expr);
+        if (!expr.IsEmpty()) {
+            int index = m_comboExpr.FindStringExact(-1, expr);
+            if (index == CB_ERR) {
+                m_comboExpr.InsertString(0, expr);
+                if (m_comboExpr.GetCount() > 20) m_comboExpr.DeleteString(20);
+            }
+        }
         UpdateResult();
         return;
     }
@@ -341,7 +346,6 @@ void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 
 void CfcalcDlg::OnBnClickedOk()
 {
-    
     UpdateResult();
 }
 
