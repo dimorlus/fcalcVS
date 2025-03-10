@@ -42,13 +42,9 @@ private:
     toptions opts;
     char strings[20][80];
     HBRUSH m_hEditBrush;
-    float__t fVal; // Add to store calculation result
     void UpdateResult();
 
     void SaveToRegistry();
     void LoadFromRegistry();
     static const TCHAR* REG_KEY;
-
-public:
-    virtual BOOL PreTranslateMessage(MSG* pMsg); // Add PreTranslateMessage for Enter handling
 };

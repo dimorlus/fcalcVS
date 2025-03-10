@@ -136,21 +136,35 @@ BOOL CfcalcDlg::OnInitDialog()
 BOOL CfcalcDlg::PreTranslateMessage(MSG* pMsg)
 {
     TRACE(_T("PreTranslateMessage: message = %d, nChar = %d\n"), pMsg->message, pMsg->wParam);
-    if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN) {
-        CString expr;
-        m_comboExpr.GetWindowText(expr);
-        TRACE(_T("PreTranslateMessage: expr = '%s', IsEmpty = %d\n"), expr, expr.IsEmpty());
-        if (!expr.IsEmpty()) {
-            int index = m_comboExpr.FindStringExact(-1, expr);
-            TRACE(_T("PreTranslateMessage: FindStringExact returned %d\n"), index);
-            if (index == CB_ERR) {
-                m_comboExpr.InsertString(0, expr);
-                if (m_comboExpr.GetCount() > 100) m_comboExpr.DeleteString(100); // Лимит 100
-                TRACE(_T("PreTranslateMessage: Added expr '%s' to history, count = %d\n"), expr, m_comboExpr.GetCount());
+    if (pMsg->message == WM_KEYDOWN) {
+        if (pMsg->wParam == VK_RETURN) {
+            CString expr;
+            m_comboExpr.GetWindowText(expr);
+            TRACE(_T("PreTranslateMessage: expr = '%s', IsEmpty = %d\n"), expr, expr.IsEmpty());
+            if (!expr.IsEmpty()) {
+                int index = m_comboExpr.FindStringExact(-1, expr);
+                TRACE(_T("PreTranslateMessage: FindStringExact returned %d\n"), index);
+                if (index == CB_ERR) {
+                    m_comboExpr.InsertString(0, expr);
+                    if (m_comboExpr.GetCount() > 100) m_comboExpr.DeleteString(100); // Лимит 100
+                    TRACE(_T("PreTranslateMessage: Added expr '%s' to history, count = %d\n"), expr, m_comboExpr.GetCount());
+                }
             }
+            UpdateResult(); // Обновляем результат и отображаем fVal в ComboBox
+            return TRUE; // Перехватываем сообщение
         }
-        UpdateResult(); // Обновляем результат
-        return TRUE; // Перехватываем сообщение
+        else if (pMsg->wParam == VK_DELETE) {
+            TRACE(_T("PreTranslateMessage: VK_DELETE detected, dropped state = %d\n"), m_comboExpr.GetDroppedState());
+            if (m_comboExpr.GetDroppedState()) {
+                int selIndex = m_comboExpr.GetCurSel();
+                if (selIndex != CB_ERR) {
+                    m_comboExpr.DeleteString(selIndex);
+                    TRACE(_T("PreTranslateMessage: Deleted item at index %d, new count = %d\n"), selIndex, m_comboExpr.GetCount());
+                }
+                return TRUE; // Перехватываем сообщение
+            }
+            // Если список закрыт, передаём событие дальше для редактирования
+        }
     }
     return CDialogEx::PreTranslateMessage(pMsg);
 }
@@ -237,6 +251,10 @@ void CfcalcDlg::UpdateResult()
     fVal = ccalc->evaluate(exprBuf, &iVal);
     TRACE(_T("UpdateResult: After evaluate, fVal = %Lf, iVal = %lld\n"), fVal, iVal);
 
+    // Сохраняем результат в виде строки
+    CString fValStr;
+    fValStr.Format(_T("%.16Lg"), fVal);
+
     int scfg = ccalc->issyntax();
     int n = 0;
 
@@ -263,7 +281,7 @@ void CfcalcDlg::UpdateResult()
         }
     }
     else {
-        sprintf_s(strings[n++], 80, "Result: %.16Lg", fVal); // Изменили формат на %.16Lg
+        sprintf_s(strings[n++], 80, "Result: %.16Lg", fVal); // Формат %.16Lg
         if (iVal != 0) {
             for (int i = 0; i < ((iVal < 19) ? iVal : 19); i++)
                 sprintf_s(strings[n++], 80, "Int Value gy%d: %lld", i, iVal);
@@ -286,6 +304,13 @@ void CfcalcDlg::UpdateResult()
     }
     m_editResult.SetWindowText(resultText);
     TRACE(_T("UpdateResult: SetWindowText completed with %d lines\n"), lineCount);
+
+    // Обновляем текст в ComboBox с результатом fVal
+    DWORD sel = m_comboExpr.GetEditSel();
+    int start = LOWORD(sel);
+    int end = HIWORD(sel);
+    m_comboExpr.SetWindowText(fValStr);
+    m_comboExpr.SetEditSel(start, end); // Восстанавливаем позицию курсора
 
     int margin = 0;
     int titleBarHeight = GetSystemMetrics(SM_CYCAPTION);
@@ -346,7 +371,26 @@ void CfcalcDlg::OnFormatScientific()
 void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
     TRACE(_T("OnKeyDown: nChar = %d\n"), nChar);
-    CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags); // Передаём событие дальше
+    if (nChar == VK_DELETE && !m_comboExpr.GetDroppedState()) {
+        // Сохраняем текущую позицию курсора
+        DWORD sel = m_comboExpr.GetEditSel();
+        int start = LOWORD(sel);
+        int end = HIWORD(sel);
+        TRACE(_T("OnKeyDown: Current selection start = %d, end = %d\n"), start, end);
+        // Передаём событие дальше, чтобы стандартная обработка удалила символ
+        CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags);
+        // Восстанавливаем позицию курсора
+        // Если ничего не выделено (start == end), корректируем позицию после удаления
+        if (start == end) {
+            m_comboExpr.SetEditSel(start, start);
+        }
+        else {
+            m_comboExpr.SetEditSel(start, end);
+        }
+    }
+    else {
+        CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags); // Передаём событие дальше
+    }
 }
 
 void CfcalcDlg::OnBnClickedOk()
