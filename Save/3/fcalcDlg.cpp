@@ -36,6 +36,7 @@ CfcalcDlg::CfcalcDlg(CWnd* pParent /*=nullptr*/)
     g_pDialog = this;
     opts.options = PAS | SCI | UPCASE;
     m_hEditBrush = CreateSolidBrush(RGB(255, 255, 255));
+    fVal = 0; // Initialize fVal
 }
 
 CfcalcDlg::~CfcalcDlg()
@@ -115,7 +116,6 @@ BOOL CfcalcDlg::OnInitDialog()
     ::ReleaseDC(m_hWnd, hDC);
 
     m_comboExpr.SetWindowText(_T(""));
-    m_comboExpr.SetFocus(); // Устанавливаем фокус на комбо-бокс при старте
     ccalc->addfn("menu", showmenu);
 
     LoadFromRegistry();
@@ -136,35 +136,29 @@ BOOL CfcalcDlg::OnInitDialog()
 BOOL CfcalcDlg::PreTranslateMessage(MSG* pMsg)
 {
     TRACE(_T("PreTranslateMessage: message = %d, nChar = %d\n"), pMsg->message, pMsg->wParam);
-    if (pMsg->message == WM_KEYDOWN) {
-        if (pMsg->wParam == VK_RETURN) {
-            CString expr;
-            m_comboExpr.GetWindowText(expr);
-            TRACE(_T("PreTranslateMessage: expr = '%s', IsEmpty = %d\n"), expr, expr.IsEmpty());
-            if (!expr.IsEmpty()) {
-                int index = m_comboExpr.FindStringExact(-1, expr);
-                TRACE(_T("PreTranslateMessage: FindStringExact returned %d\n"), index);
-                if (index == CB_ERR) {
-                    m_comboExpr.InsertString(0, expr);
-                    if (m_comboExpr.GetCount() > 100) m_comboExpr.DeleteString(100); // Лимит 100
-                    TRACE(_T("PreTranslateMessage: Added expr '%s' to history, count = %d\n"), expr, m_comboExpr.GetCount());
-                }
+    if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN) {
+        CString expr;
+        m_comboExpr.GetWindowText(expr);
+        TRACE(_T("PreTranslateMessage: expr = '%s', IsEmpty = %d\n"), expr, expr.IsEmpty());
+        if (!expr.IsEmpty()) {
+            int index = m_comboExpr.FindStringExact(-1, expr);
+            TRACE(_T("PreTranslateMessage: FindStringExact returned %d\n"), index);
+            if (index == CB_ERR) {
+                m_comboExpr.InsertString(0, expr);
+                if (m_comboExpr.GetCount() > 100) m_comboExpr.DeleteString(100); // Limit to 100
+                TRACE(_T("PreTranslateMessage: Added expr '%s' to history, count = %d\n"), expr, m_comboExpr.GetCount());
             }
-            UpdateResult(); // Обновляем результат
-            return TRUE; // Перехватываем сообщение
         }
-        else if (pMsg->wParam == VK_DELETE) {
-            TRACE(_T("PreTranslateMessage: VK_DELETE detected, dropped state = %d\n"), m_comboExpr.GetDroppedState());
-            if (m_comboExpr.GetDroppedState()) {
-                int selIndex = m_comboExpr.GetCurSel();
-                if (selIndex != CB_ERR) {
-                    m_comboExpr.DeleteString(selIndex);
-                    TRACE(_T("PreTranslateMessage: Deleted item at index %d, new count = %d\n"), selIndex, m_comboExpr.GetCount());
-                }
-                return TRUE; // Перехватываем сообщение
-            }
-            // Если список закрыт, передаём событие дальше для редактирования
-        }
+        // Calculate result
+        UpdateResult();
+        // Get fValStr from the last calculation and replace text
+        CString fValStr;
+        fValStr.Format(_T("%.16Lg"), fVal); // Use class member fVal
+        m_comboExpr.SetWindowText(fValStr);
+        // Set cursor to the end of the line
+        int nLength = m_comboExpr.GetWindowTextLength();
+        m_comboExpr.SetEditSel(nLength, nLength);
+        return TRUE; // Intercept the message
     }
     return CDialogEx::PreTranslateMessage(pMsg);
 }
@@ -198,14 +192,13 @@ void CfcalcDlg::OnCbnEditChangeComboExpr()
 {
     int nLength = m_comboExpr.GetWindowTextLength();
     m_comboExpr.SetEditSel(nLength, nLength);
-    UpdateResult(); // Обновляем результат при наборе текста
+    UpdateResult();
 }
 
 void CfcalcDlg::OnCbnSelendokComboExpr()
 {
     int nLength = m_comboExpr.GetWindowTextLength();
     m_comboExpr.SetEditSel(nLength, nLength);
-    // Убираем добавление в историю при выборе из списка
 }
 
 void CfcalcDlg::OnSize(UINT nType, int cx, int cy)
@@ -218,6 +211,11 @@ void CfcalcDlg::OnSize(UINT nType, int cx, int cy)
         int comboHeight = comboRect.Height();
         m_comboExpr.MoveWindow(0, 0, cx, comboHeight);
         m_editResult.MoveWindow(0, comboHeight + 1, cx, cy - comboHeight - 1);
+        CRect editRect;
+        m_editResult.GetWindowRect(&editRect);
+        ScreenToClient(&editRect);
+        int contentHeight = min(cy - comboHeight - 1, m_lineHeight * 20);
+        m_editResult.MoveWindow(0, comboHeight + 1, cx, contentHeight);
     }
 }
 
@@ -239,7 +237,7 @@ void CfcalcDlg::UpdateResult()
     SetWindowText(expr);
 
     int64_t iVal = 0;
-    float__t fVal = 0;
+    fVal = 0; // Store result in class member fVal
     char exprBuf[2048];
     memset(strings, 0, sizeof(strings));
     strncpy_s(exprBuf, CStringA(expr), sizeof(exprBuf) - 1);
@@ -251,6 +249,8 @@ void CfcalcDlg::UpdateResult()
     fVal = ccalc->evaluate(exprBuf, &iVal);
     TRACE(_T("UpdateResult: After evaluate, fVal = %Lf, iVal = %lld\n"), fVal, iVal);
 
+    CString fValStr;
+    fValStr.Format(_T("%.16Lg"), fVal);
     int scfg = ccalc->issyntax();
     int n = 0;
 
@@ -277,7 +277,7 @@ void CfcalcDlg::UpdateResult()
         }
     }
     else {
-        sprintf_s(strings[n++], 80, "Result: %.16Lg", fVal); // Формат %.16Lg
+        sprintf_s(strings[n++], 80, "Result: %.16Lg", fVal);
         if (iVal != 0) {
             for (int i = 0; i < ((iVal < 19) ? iVal : 19); i++)
                 sprintf_s(strings[n++], 80, "Int Value gy%d: %lld", i, iVal);
@@ -300,6 +300,13 @@ void CfcalcDlg::UpdateResult()
     }
     m_editResult.SetWindowText(resultText);
     TRACE(_T("UpdateResult: SetWindowText completed with %d lines\n"), lineCount);
+
+    // Remove text replacement to avoid overwriting during editing
+    // int start, end;
+    // if (m_comboExpr.GetEditSel(&start, &end) != CB_ERR) {
+    //     m_comboExpr.SetWindowText(fValStr);
+    //     m_comboExpr.SetEditSel(start, end);
+    // }
 
     int margin = 0;
     int titleBarHeight = GetSystemMetrics(SM_CYCAPTION);
@@ -354,17 +361,6 @@ void CfcalcDlg::OnFormatScientific()
     if (pMenu) {
         pMenu->CheckMenuItem(ID_FORMAT_SCIENTIFIC, MF_BYCOMMAND | (opts.scf ? MF_CHECKED : MF_UNCHECKED));
     }
-    UpdateResult();
-}
-
-void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
-{
-    TRACE(_T("OnKeyDown: nChar = %d\n"), nChar);
-    CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags); // Передаём событие дальше
-}
-
-void CfcalcDlg::OnBnClickedOk()
-{
     UpdateResult();
 }
 
@@ -458,3 +454,20 @@ void CfcalcDlg::LoadFromRegistry()
     }
     regKey.Close();
 }
+
+
+void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+    if (nChar == VK_RETURN) {
+        UpdateResult();
+        return;
+    }
+    CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags);
+}
+
+void CfcalcDlg::OnBnClickedOk()
+{
+    
+    UpdateResult();
+}
+
