@@ -115,6 +115,7 @@ BOOL CfcalcDlg::OnInitDialog()
     ::ReleaseDC(m_hWnd, hDC);
 
     m_comboExpr.SetWindowText(_T(""));
+    m_comboExpr.SetFocus(); // Устанавливаем фокус на комбо-бокс при старте
     ccalc->addfn("menu", showmenu);
 
     LoadFromRegistry();
@@ -130,6 +131,28 @@ BOOL CfcalcDlg::OnInitDialog()
 
     UpdateResult();
     return TRUE;
+}
+
+BOOL CfcalcDlg::PreTranslateMessage(MSG* pMsg)
+{
+    TRACE(_T("PreTranslateMessage: message = %d, nChar = %d\n"), pMsg->message, pMsg->wParam);
+    if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN) {
+        CString expr;
+        m_comboExpr.GetWindowText(expr);
+        TRACE(_T("PreTranslateMessage: expr = '%s', IsEmpty = %d\n"), expr, expr.IsEmpty());
+        if (!expr.IsEmpty()) {
+            int index = m_comboExpr.FindStringExact(-1, expr);
+            TRACE(_T("PreTranslateMessage: FindStringExact returned %d\n"), index);
+            if (index == CB_ERR) {
+                m_comboExpr.InsertString(0, expr);
+                if (m_comboExpr.GetCount() > 100) m_comboExpr.DeleteString(100); // Лимит 100
+                TRACE(_T("PreTranslateMessage: Added expr '%s' to history, count = %d\n"), expr, m_comboExpr.GetCount());
+            }
+        }
+        UpdateResult(); // Обновляем результат
+        return TRUE; // Перехватываем сообщение
+    }
+    return CDialogEx::PreTranslateMessage(pMsg);
 }
 
 void CfcalcDlg::OnPaint()
@@ -161,7 +184,7 @@ void CfcalcDlg::OnCbnEditChangeComboExpr()
 {
     int nLength = m_comboExpr.GetWindowTextLength();
     m_comboExpr.SetEditSel(nLength, nLength);
-    UpdateResult();
+    UpdateResult(); // Обновляем результат при наборе текста
 }
 
 void CfcalcDlg::OnCbnSelendokComboExpr()
@@ -240,7 +263,7 @@ void CfcalcDlg::UpdateResult()
         }
     }
     else {
-        sprintf_s(strings[n++], 80, "Result: %.2Lf", fVal);
+        sprintf_s(strings[n++], 80, "Result: %.16Lg", fVal); // Изменили формат на %.16Lg
         if (iVal != 0) {
             for (int i = 0; i < ((iVal < 19) ? iVal : 19); i++)
                 sprintf_s(strings[n++], 80, "Int Value gy%d: %lld", i, iVal);
@@ -263,12 +286,6 @@ void CfcalcDlg::UpdateResult()
     }
     m_editResult.SetWindowText(resultText);
     TRACE(_T("UpdateResult: SetWindowText completed with %d lines\n"), lineCount);
-
-    int index = m_comboExpr.FindStringExact(-1, expr);
-    if (index == CB_ERR && !expr.IsEmpty()) {
-        m_comboExpr.InsertString(0, expr);
-        if (m_comboExpr.GetCount() > 20) m_comboExpr.DeleteString(20);
-    }
 
     int margin = 0;
     int titleBarHeight = GetSystemMetrics(SM_CYCAPTION);
@@ -328,20 +345,8 @@ void CfcalcDlg::OnFormatScientific()
 
 void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
-    if (nChar == VK_RETURN) {
-        CString expr;
-        m_comboExpr.GetWindowText(expr);
-        if (!expr.IsEmpty()) {
-            int index = m_comboExpr.FindStringExact(-1, expr);
-            if (index == CB_ERR) {
-                m_comboExpr.InsertString(0, expr);
-                if (m_comboExpr.GetCount() > 20) m_comboExpr.DeleteString(20);
-            }
-        }
-        UpdateResult();
-        return;
-    }
-    CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags);
+    TRACE(_T("OnKeyDown: nChar = %d\n"), nChar);
+    CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags); // Передаём событие дальше
 }
 
 void CfcalcDlg::OnBnClickedOk()
@@ -395,8 +400,8 @@ void CfcalcDlg::SaveToRegistry()
     if (ERROR_SUCCESS == regKey.Create(HKEY_CURRENT_USER, REG_KEY))
     {
         int count = m_comboExpr.GetCount();
-        regKey.SetDWORDValue(_T("HistoryCount"), min(count, 20));
-        for (int i = 0; i < min(count, 20); i++)
+        regKey.SetDWORDValue(_T("HistoryCount"), min(count, 100));
+        for (int i = 0; i < min(count, 100); i++)
         {
             CString item;
             m_comboExpr.GetLBText(i, item);
@@ -417,7 +422,7 @@ void CfcalcDlg::LoadFromRegistry()
     {
         DWORD count = 0;
         regKey.QueryDWORDValue(_T("HistoryCount"), count);
-        for (DWORD i = 0; i < min(count, 20); i++)
+        for (DWORD i = 0; i < min(count, 100); i++)
         {
             CString keyName;
             keyName.Format(_T("History%d"), i);
