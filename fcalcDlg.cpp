@@ -196,19 +196,17 @@ HCURSOR CfcalcDlg::OnQueryDragIcon()
 
 void CfcalcDlg::OnCbnEditChangeComboExpr()
 {
-    // Получаем текущую позицию курсора (начало и конец выделения)
+    // Get current cursor position (start and end of selection)
     DWORD sel = m_comboExpr.GetEditSel();
     int start = LOWORD(sel);
     int end = HIWORD(sel);
 
-    // Вызываем UpdateResult для пересчёта результата
+    // Update the result
     UpdateResult();
 
-    // Восстанавливаем позицию курсора
-    // Если был удалён символ (например, Delete), оставляем курсор на прежней позиции
+    // Restore cursor position
     m_comboExpr.SetEditSel(start, start);
 }
-
 void CfcalcDlg::OnCbnSelendokComboExpr()
 {
     int nLength = m_comboExpr.GetWindowTextLength();
