@@ -24,7 +24,7 @@
 #pragma warning(disable : 4244)
 
 #define _WIN_
-#define INT_FORMAT      "L"
+#define INT_FORMAT      "ll"
 
 calculator::calculator(int cfg)
 {
@@ -932,8 +932,8 @@ t_operator calculator::scan(bool operand, bool percent)
     case '\'':
      {
       int_t ival;
-      char *ipos, *fpos;
-      wchar_t wc;
+      char* ipos;// , * fpos;
+      //wchar_t wc;
       int n = 0;
 
       if (buf[pos] == '\\')
@@ -1019,8 +1019,8 @@ t_operator calculator::scan(bool operand, bool percent)
     case 'L':
      {
       int_t ival;
-      char *ipos, *fpos;
-      wchar_t wc;
+      char* ipos;// , * fpos;
+      //wchar_t wc;
       int n = 0;
 
       if (buf[pos] == '\'')
@@ -1072,7 +1072,7 @@ t_operator calculator::scan(bool operand, bool percent)
 #endif /*_WCHAR_*/
     case '"':
      {
-       char *ipos, *fpos;
+       char* ipos;// , * fpos;
        char sbuf[STRBUF];
        int sidx = 0;
        ipos = buf+pos;
@@ -2147,7 +2147,7 @@ float__t calculator::evaluate(char* expression, __int64 * piVal)
                   return qnan;
                 }
               else
-              if (v_stack[v_sp-1].tag == tvINT)
+              if (v_stack[v_sp-1].tag == tvINT) 
                 {
                   v_stack[v_sp-1].ival = !v_stack[v_sp-1].ival;
                 }

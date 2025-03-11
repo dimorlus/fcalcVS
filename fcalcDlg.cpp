@@ -331,10 +331,10 @@ void CfcalcDlg::UpdateOptionsAll()
     if (pMenu) {
         UINT state = pMenu->GetMenuState(ID_FORMAT_ALL, MF_BYCOMMAND);
         if (state & MF_CHECKED) {
-            opts.options |= (SCI | NRM | FRC | CMP | IGR | UNS | HEX | OCT | FBIN | CHR | WCH | DAT | UTM | DEG | STR | FRI | AUT);
+            opts.options |= (SCI + NRM + FRC + CMP + IGR + UNS + HEX + OCT + fBIN + CHR + DAT + UTM + DEG + STR + FRI);
         }
         else {
-            opts.options &= ~(SCI | NRM | FRC | CMP | IGR | UNS | HEX | OCT | FBIN | CHR | WCH | DAT | UTM | DEG | STR | FRI | AUT);
+            opts.options &= ~(SCI + NRM + FRC + CMP + IGR + UNS + HEX + OCT + fBIN + CHR + DAT + UTM + DEG + STR + FRI);
         }
         ccalc->syntax(opts.options);
         UpdateMenuFromOptions();

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <math.h>
 #include <float.h>
 
@@ -370,7 +371,7 @@ int nx_time2str(char *str, int64_t time)
 {
   struct tm t;
   gmtime_s(&t, (time_t*)&time);  // Используем безопасную версию функции
-  return strftime(str, 80, "%a, %b %d %H:%M:%S %Y", &t);
+  return (int)strftime(str, 80, "%a, %b %d %H:%M:%S %Y", &t);
 }
 //int nx_time2str(char *str, __int64 time)
 //{
@@ -473,3 +474,273 @@ int d2frcstr(char *str, float__t d, int eps_order)
 }
 //---------------------------------------------------------------------------
 
+
+int format_out(int Options, int scfg, int binwide, int n, float__t fVal, int64_t iVal, 
+    char *expr, char strings[20][80], calculator* ccalc)
+{
+    if (IsNaN(fVal)) {
+        if (ccalc->error()[0]) {
+            if (ccalc->errps() < 64) {
+                char binstr[80];
+                memset(binstr, '-', sizeof binstr);
+                binstr[ccalc->errps()] = '^';
+                binstr[ccalc->errps() + 1] = '\0';
+                sprintf(strings[n++], "%-64s", binstr);
+                sprintf(strings[n++], "%66.66s ", ccalc->error());
+            }
+            else {
+                sprintf(strings[n++], "%66.66s ", ccalc->error());
+            }
+        }
+        else {
+            if (expr[0])
+                sprintf(strings[n++], "%66.66s ", "NaN");
+            else
+                sprintf(strings[n++], "%66.66s ", " ");
+
+            // (RO) String format found
+            if ((Options & STR) || (scfg & STR)) {
+                if (Options & AUTO) {
+                    if (ccalc->Sres()[0]) {
+                        char strcstr[80];
+                        sprintf(strcstr, "'%s'", ccalc->Sres());
+                        if (strcstr[0])
+                            sprintf(strings[n++], "%65.64s", strcstr);
+                    }
+                }
+                else {
+                    if (ccalc->Sres()[0]) {
+                        char strcstr[80];
+                        sprintf(strcstr, "'%s'", ccalc->Sres());
+                        sprintf(strings[n++], "%65.64s", strcstr);
+                    }
+                    else
+                        sprintf(strings[n++], "%65.64s", "''");
+                }
+            }
+        }
+    }
+    else {
+        // (WO) Forced float
+        if (Options & FFLOAT)
+            sprintf(strings[n++], "%65.16Lg f", (long double)fVal);
+
+        // (RO) Scientific (6.8k) format found
+        if ((Options & SCF) || (scfg & SCF)) {
+            char scistr[80];
+            d2scistr(scistr, fVal);
+            sprintf(strings[n++], "%65.64s S", scistr);
+        }
+
+        // (UI) Normalized output
+        if (Options & NRM) {
+            char nrmstr[80];
+            d2nrmstr(nrmstr, fVal);
+            sprintf(strings[n++], "%65.64s n", nrmstr);
+        }
+
+        // (RO) Computing format found
+        if ((Options & CMP) || (scfg & CMP)) {
+            char bscistr[80];
+            b2scistr(bscistr, fVal);
+            sprintf(strings[n++], "%65.64s c", bscistr);
+        }
+
+        // (UI) Integer output
+        if (Options & IGR) {
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], "%65lld i", iVal);
+            }
+            else
+                sprintf(strings[n++], "%65lld i", iVal);
+        }
+
+        // (UI) Unsigned output
+        if (Options & UNS) {
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], "%65llu u", iVal);
+            }
+            else
+                sprintf(strings[n++], "%65llu u", iVal);
+        }
+
+        // (UI) Fraction output
+        if (Options & FRC) {
+            char frcstr[80];
+            int num, denum;
+            double val;
+            if (fVal > 0)
+                val = fVal;
+            else
+                val = -fVal;
+            double intpart = floor(val);
+            if (intpart > 0) {
+                fraction(val - intpart, 0.001, num, denum);
+                if (fVal > 0)
+                    sprintf(frcstr, "%.0f+%d/%d", intpart, num, denum);
+                else
+                    sprintf(frcstr, "-%.0f-%d/%d", intpart, num, denum);
+            }
+            else {
+                fraction(val, 0.001, num, denum);
+                if (fVal > 0)
+                    sprintf(frcstr, "%d/%d", num, denum);
+                else
+                    sprintf(frcstr, "-%d/%d", num, denum);
+            }
+            if (denum)
+                sprintf(strings[n++], "%65.64s F", frcstr);
+        }
+
+        // (UI) Fraction inch output
+        if (Options & FRI) {
+            char frcstr[80];
+            int num, denum;
+            double val;
+            if (fVal > 0)
+                val = fVal;
+            else
+                val = -fVal;
+            val /= 25.4e-3;
+            double intpart = floor(val);
+            if (intpart > 0) {
+                fraction(val - intpart, 0.001, num, denum);
+                if (num && denum) {
+                    if (fVal > 0)
+                        sprintf(frcstr, "%.0f+%d/%d", intpart, num, denum);
+                    else
+                        sprintf(frcstr, "-%.0f-%d/%d", intpart, num, denum);
+                }
+                else {
+                    sprintf(frcstr, "%.0f", intpart);
+                }
+            }
+            else {
+                fraction(val, 0.001, num, denum);
+                if (fVal > 0)
+                    sprintf(frcstr, "%d/%d", num, denum);
+                else
+                    sprintf(frcstr, "-%d/%d", num, denum);
+            }
+            sprintf(strings[n++], "%65.64s \"", frcstr);
+        }
+
+        // (RO) Hex format found
+        if ((Options & HEX) || (scfg & HEX)) {
+            char binfstr[16];
+            sprintf(binfstr, "%%64.%iLxh", binwide / 4);
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], binfstr, iVal);
+            }
+            else
+                sprintf(strings[n++], binfstr, iVal);
+        }
+
+        // (RO) Octal format found
+        if ((Options & OCT) || (scfg & OCT)) {
+            char binfstr[16];
+            sprintf(binfstr, "%%64.%iLoo", binwide / 3);
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], binfstr, iVal);
+            }
+            else
+                sprintf(strings[n++], binfstr, iVal);
+        }
+
+        // (RO) Binary format found
+        if ((Options & fBIN) || (scfg & fBIN)) {
+            char binfstr[16];
+            char binstr[80];
+            sprintf(binfstr, "%%%ib", binwide);
+            b2str(binstr, binfstr, iVal);
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], "%64.64sb", binstr);
+            }
+            else
+                sprintf(strings[n++], "%64.64sb", binstr);
+        }
+
+        // (RO) Char format found
+        if ((Options & CHR) || (scfg & CHR)) {
+            char chrstr[80];
+            chr2str(chrstr, iVal);
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], "%64.64s  c", chrstr);
+            }
+            else
+                sprintf(strings[n++], "%64.64s  c", chrstr);
+        }
+
+        // (RO) WChar format found
+        if ((Options & WCH) || (scfg & WCH)) {
+            char wchrstr[80];
+            wchr2str(wchrstr, iVal);
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], "%64.64s  c", wchrstr);
+            }
+            else
+                sprintf(strings[n++], "%64.64s  c", wchrstr);
+        }
+
+        // (RO) Date time format found
+        if ((Options & DAT) || (scfg & DAT)) {
+            char dtstr[80];
+            t2str(dtstr, iVal);
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], "%65.64s", dtstr);
+            }
+            else
+                sprintf(strings[n++], "%65.64s", dtstr);
+        }
+
+        // (RO) Unix time
+        if ((Options & UTM) || (scfg & UTM)) {
+            char dtstr[80];
+            nx_time2str(dtstr, iVal);
+            if (Options & AUTO) {
+                if ((fVal - iVal) == 0)
+                    sprintf(strings[n++], "%65.64s", dtstr);
+            }
+            else
+                sprintf(strings[n++], "%65.64s", dtstr);
+        }
+
+        // (RO) Degrees format found
+        if ((Options & DEG) || (scfg & DEG)) {
+            char dgrstr[80];
+            dgr2str(dgrstr, fVal);
+            sprintf(strings[n++], "%65.64s", dgrstr);
+        }
+
+        // (RO) String format found
+        if ((Options & STR) || (scfg & STR)) {
+            if (Options & AUTO) {
+                if (ccalc->Sres()[0]) {
+                    char strcstr[80];
+                    sprintf(strcstr, "'%s'", ccalc->Sres());
+                    if (strcstr[0])
+                        sprintf(strings[n++], "%65.64s", strcstr);
+                }
+            }
+            else {
+                if (ccalc->Sres()[0]) {
+                    char strcstr[80];
+                    sprintf(strcstr, "'%s'", ccalc->Sres());
+                    sprintf(strings[n++], "%65.64s", strcstr);
+                }
+                else
+                    sprintf(strings[n++], "%65.64s", "''");
+            }
+        }
+    }
+
+    return n;
+}
