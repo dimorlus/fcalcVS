@@ -27,6 +27,7 @@
 #define HEX     (1<<9)  // (RO) Hex format found
 #define OCT     (1<<10) // (RO) Octal format found
 #define fBIN    (1<<11) // (RO) Binary format found
+#define FBIN    (1<<11) // (RO) Binary format found
 #define DAT     (1<<12) // (RO) Date time format found
 #define CHR     (1<<13) // (RO) Char format found
 #define WCH     (1<<14) // (RO) WChar format found
@@ -43,6 +44,7 @@
 #define FRC     (1<<24) // (UI) Fraction output
 #define FRI     (1<<25) // (UI) Fraction inch output
 #define AUTO    (1<<26) // (UI) Auto output
+#define AUT     (1<<26) // (UI) Auto output
 #define STRBUF  256     // bufer size for string operations
 
 #define _WCHAR_         // L'c' and 'c'W input format allow

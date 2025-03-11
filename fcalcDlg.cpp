@@ -36,6 +36,7 @@ CfcalcDlg::CfcalcDlg(CWnd* pParent /*=nullptr*/)
     g_pDialog = this;
     opts.options = PAS | SCI | UPCASE;
     m_hEditBrush = CreateSolidBrush(RGB(255, 255, 255));
+    fVal = 0; // Initialize fVal
 }
 
 CfcalcDlg::~CfcalcDlg()
@@ -51,9 +52,6 @@ void CfcalcDlg::DoDataExchange(CDataExchange* pDX)
     CDialogEx::DoDataExchange(pDX);
     DDX_Control(pDX, IDC_COMBO_EXPR, m_comboExpr);
     DDX_Control(pDX, IDC_EDIT_RESULT, m_editResult);
-    if (pDX->m_bSaveAndValidate && !m_comboExpr.m_hWnd) {
-        TRACE(_T("m_comboExpr is not initialized!\n"));
-    }
 }
 
 BEGIN_MESSAGE_MAP(CfcalcDlg, CDialogEx)
@@ -66,6 +64,7 @@ BEGIN_MESSAGE_MAP(CfcalcDlg, CDialogEx)
     ON_COMMAND(ID_CALC_CASESENSETIVE, &CfcalcDlg::OnCalcCaseSensetive)
     ON_COMMAND(ID_CALC_FORCEDFLOAT, &CfcalcDlg::OnCalcForcedFloat)
     ON_COMMAND(ID_FORMAT_SCIENTIFIC, &CfcalcDlg::OnFormatScientific)
+    ON_COMMAND(ID_FORMAT_ALL, &CfcalcDlg::OnFormatAll) // Исправлено: ID_FORMAT_ALL
     ON_WM_CTLCOLOR()
     ON_WM_NCPAINT()
     ON_WM_ERASEBKGND()
@@ -115,56 +114,254 @@ BOOL CfcalcDlg::OnInitDialog()
     ::ReleaseDC(m_hWnd, hDC);
 
     m_comboExpr.SetWindowText(_T(""));
-    m_comboExpr.SetFocus(); // Устанавливаем фокус на комбо-бокс при старте
     ccalc->addfn("menu", showmenu);
 
     LoadFromRegistry();
 
-    CMenu* pMenu = GetMenu();
-    if (pMenu) {
-        pMenu->ModifyMenu(ID_CALC_PASSTYLE, MF_BYCOMMAND | MF_STRING, ID_CALC_PASSTYLE,
-            opts.pas ? _T("Pas style") : _T("C style"));
-        pMenu->CheckMenuItem(ID_CALC_CASESENSETIVE, MF_BYCOMMAND | (opts.upcase ? MF_CHECKED : MF_UNCHECKED));
-        pMenu->CheckMenuItem(ID_CALC_FORCEDFLOAT, MF_BYCOMMAND | (opts.ffloat ? MF_CHECKED : MF_UNCHECKED));
-        pMenu->CheckMenuItem(ID_FORMAT_SCIENTIFIC, MF_BYCOMMAND | (opts.scf ? MF_CHECKED : MF_UNCHECKED));
-    }
+    UpdateMenuFromOptions();
 
     UpdateResult();
     return TRUE;
 }
 
+void CfcalcDlg::UpdateMenuFromOptions()
+{
+    CMenu* pMenu = GetMenu();
+    if (pMenu) {
+        pMenu->ModifyMenu(ID_CALC_PASSTYLE, MF_BYCOMMAND | MF_STRING, ID_CALC_PASSTYLE,
+            (opts.options & PAS) ? _T("Pas style") : _T("C style"));
+        pMenu->CheckMenuItem(ID_CALC_CASESENSETIVE, MF_BYCOMMAND | ((opts.options & UPCASE) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_CALC_FORCEDFLOAT, MF_BYCOMMAND | ((opts.options & FFLOAT) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_SCIENTIFIC, MF_BYCOMMAND | ((opts.options & SCI) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_NORMALIZED, MF_BYCOMMAND | ((opts.options & NRM) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_FRACTION, MF_BYCOMMAND | ((opts.options & FRC) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_COMPUTING, MF_BYCOMMAND | ((opts.options & CMP) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_INTEGER, MF_BYCOMMAND | ((opts.options & IGR) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_UNSIGNED, MF_BYCOMMAND | ((opts.options & UNS) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_HEX, MF_BYCOMMAND | ((opts.options & HEX) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_OCTAL, MF_BYCOMMAND | ((opts.options & OCT) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_BINARY, MF_BYCOMMAND | ((opts.options & FBIN) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_CHAR, MF_BYCOMMAND | ((opts.options & CHR) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_WIDECHAR, MF_BYCOMMAND | ((opts.options & WCH) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_DATETIME, MF_BYCOMMAND | ((opts.options & DAT) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_UNIXTIME, MF_BYCOMMAND | ((opts.options & UTM) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_DEGREESE, MF_BYCOMMAND | ((opts.options & DEG) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_STRING, MF_BYCOMMAND | ((opts.options & STR) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_INCH, MF_BYCOMMAND | ((opts.options & FRI) ? MF_CHECKED : MF_UNCHECKED));
+        pMenu->CheckMenuItem(ID_FORMAT_AUTO, MF_BYCOMMAND | ((opts.options & AUT) ? MF_CHECKED : MF_UNCHECKED));
+    }
+}
+
+void CfcalcDlg::UpdateOptions()
+{
+    CMenu* pMenu = GetMenu();
+    if (pMenu) {
+        // Получаем текущее состояние опций
+        UINT state;
+        // Pas style (переключаем только текст, галочка всегда активна)
+        state = pMenu->GetMenuState(ID_CALC_PASSTYLE, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= PAS; // Устанавливаем бит, если галочка
+        }
+        else {
+            opts.options &= ~PAS; // Снимаем бит, если нет галочки
+        }
+        // Case Sensitive
+        state = pMenu->GetMenuState(ID_CALC_CASESENSETIVE, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options &= ~UPCASE; // Инвертируем: галочка = case sensitive (UPCASE = 0)
+        }
+        else {
+            opts.options |= UPCASE;
+        }
+        // Forced Float
+        state = pMenu->GetMenuState(ID_CALC_FORCEDFLOAT, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= FFLOAT;
+        }
+        else {
+            opts.options &= ~FFLOAT;
+        }
+        // Scientific
+        state = pMenu->GetMenuState(ID_FORMAT_SCIENTIFIC, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= SCI;
+        }
+        else {
+            opts.options &= ~SCI;
+        }
+        // Normalized
+        state = pMenu->GetMenuState(ID_FORMAT_NORMALIZED, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= NRM;
+        }
+        else {
+            opts.options &= ~NRM;
+        }
+        // Fraction
+        state = pMenu->GetMenuState(ID_FORMAT_FRACTION, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= FRC;
+        }
+        else {
+            opts.options &= ~FRC;
+        }
+        // Computing
+        state = pMenu->GetMenuState(ID_FORMAT_COMPUTING, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= CMP;
+        }
+        else {
+            opts.options &= ~CMP;
+        }
+        // Integer
+        state = pMenu->GetMenuState(ID_FORMAT_INTEGER, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= IGR;
+        }
+        else {
+            opts.options &= ~IGR;
+        }
+        // Unsigned
+        state = pMenu->GetMenuState(ID_FORMAT_UNSIGNED, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= UNS;
+        }
+        else {
+            opts.options &= ~UNS;
+        }
+        // Hex
+        state = pMenu->GetMenuState(ID_FORMAT_HEX, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= HEX;
+        }
+        else {
+            opts.options &= ~HEX;
+        }
+        // Octal
+        state = pMenu->GetMenuState(ID_FORMAT_OCTAL, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= OCT;
+        }
+        else {
+            opts.options &= ~OCT;
+        }
+        // Binary
+        state = pMenu->GetMenuState(ID_FORMAT_BINARY, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= FBIN;
+        }
+        else {
+            opts.options &= ~FBIN;
+        }
+        // Char
+        state = pMenu->GetMenuState(ID_FORMAT_CHAR, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= CHR;
+        }
+        else {
+            opts.options &= ~CHR;
+        }
+        // Wide Char
+        state = pMenu->GetMenuState(ID_FORMAT_WIDECHAR, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= WCH;
+        }
+        else {
+            opts.options &= ~WCH;
+        }
+        // DateTime
+        state = pMenu->GetMenuState(ID_FORMAT_DATETIME, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= DAT;
+        }
+        else {
+            opts.options &= ~DAT;
+        }
+        // UnixTime
+        state = pMenu->GetMenuState(ID_FORMAT_UNIXTIME, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= UTM;
+        }
+        else {
+            opts.options &= ~UTM;
+        }
+        // Degrees
+        state = pMenu->GetMenuState(ID_FORMAT_DEGREESE, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= DEG;
+        }
+        else {
+            opts.options &= ~DEG;
+        }
+        // String
+        state = pMenu->GetMenuState(ID_FORMAT_STRING, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= STR;
+        }
+        else {
+            opts.options &= ~STR;
+        }
+        // Inch
+        state = pMenu->GetMenuState(ID_FORMAT_INCH, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= FRI;
+        }
+        else {
+            opts.options &= ~FRI;
+        }
+        // Auto
+        state = pMenu->GetMenuState(ID_FORMAT_AUTO, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= AUT;
+        }
+        else {
+            opts.options &= ~AUT;
+        }
+
+        ccalc->syntax(opts.options);
+        UpdateMenuFromOptions();
+        UpdateResult();
+    }
+}
+
+void CfcalcDlg::UpdateOptionsAll()
+{
+    CMenu* pMenu = GetMenu();
+    if (pMenu) {
+        UINT state = pMenu->GetMenuState(ID_FORMAT_ALL, MF_BYCOMMAND);
+        if (state & MF_CHECKED) {
+            opts.options |= (SCI | NRM | FRC | CMP | IGR | UNS | HEX | OCT | FBIN | CHR | WCH | DAT | UTM | DEG | STR | FRI | AUT);
+        }
+        else {
+            opts.options &= ~(SCI | NRM | FRC | CMP | IGR | UNS | HEX | OCT | FBIN | CHR | WCH | DAT | UTM | DEG | STR | FRI | AUT);
+        }
+        ccalc->syntax(opts.options);
+        UpdateMenuFromOptions();
+        UpdateResult();
+    }
+}
+
 BOOL CfcalcDlg::PreTranslateMessage(MSG* pMsg)
 {
-    TRACE(_T("PreTranslateMessage: message = %d, nChar = %d\n"), pMsg->message, pMsg->wParam);
-    if (pMsg->message == WM_KEYDOWN) {
-        if (pMsg->wParam == VK_RETURN) {
-            CString expr;
-            m_comboExpr.GetWindowText(expr);
-            TRACE(_T("PreTranslateMessage: expr = '%s', IsEmpty = %d\n"), expr, expr.IsEmpty());
-            if (!expr.IsEmpty()) {
-                int index = m_comboExpr.FindStringExact(-1, expr);
-                TRACE(_T("PreTranslateMessage: FindStringExact returned %d\n"), index);
-                if (index == CB_ERR) {
-                    m_comboExpr.InsertString(0, expr);
-                    if (m_comboExpr.GetCount() > 100) m_comboExpr.DeleteString(100); // Лимит 100
-                    TRACE(_T("PreTranslateMessage: Added expr '%s' to history, count = %d\n"), expr, m_comboExpr.GetCount());
-                }
+    if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN) {
+        CString expr;
+        m_comboExpr.GetWindowText(expr);
+        if (!expr.IsEmpty()) {
+            int index = m_comboExpr.FindStringExact(-1, expr);
+            if (index == CB_ERR) {
+                m_comboExpr.InsertString(0, expr);
+                if (m_comboExpr.GetCount() > 100) m_comboExpr.DeleteString(100);
             }
-            UpdateResult(); // Обновляем результат
-            return TRUE; // Перехватываем сообщение
         }
-        else if (pMsg->wParam == VK_DELETE) {
-            TRACE(_T("PreTranslateMessage: VK_DELETE detected, dropped state = %d\n"), m_comboExpr.GetDroppedState());
-            if (m_comboExpr.GetDroppedState()) {
-                int selIndex = m_comboExpr.GetCurSel();
-                if (selIndex != CB_ERR) {
-                    m_comboExpr.DeleteString(selIndex);
-                    TRACE(_T("PreTranslateMessage: Deleted item at index %d, new count = %d\n"), selIndex, m_comboExpr.GetCount());
-                }
-                return TRUE; // Перехватываем сообщение
-            }
-            // Если список закрыт, передаём событие дальше для редактирования
-        }
+        UpdateResult();
+        CString fValStr;
+        fValStr.Format(_T("%.16Lg"), fVal);
+        m_comboExpr.SetWindowText(fValStr);
+        int nLength = m_comboExpr.GetWindowTextLength();
+        m_comboExpr.SetEditSel(nLength, nLength);
+        m_comboExpr.RedrawWindow();
+        return TRUE;
     }
     return CDialogEx::PreTranslateMessage(pMsg);
 }
@@ -196,22 +393,19 @@ HCURSOR CfcalcDlg::OnQueryDragIcon()
 
 void CfcalcDlg::OnCbnEditChangeComboExpr()
 {
-    // Get current cursor position (start and end of selection)
     DWORD sel = m_comboExpr.GetEditSel();
     int start = LOWORD(sel);
     int end = HIWORD(sel);
 
-    // Update the result
     UpdateResult();
 
-    // Restore cursor position
     m_comboExpr.SetEditSel(start, start);
 }
+
 void CfcalcDlg::OnCbnSelendokComboExpr()
 {
     int nLength = m_comboExpr.GetWindowTextLength();
     m_comboExpr.SetEditSel(nLength, nLength);
-    // Убираем добавление в историю при выборе из списка
 }
 
 void CfcalcDlg::OnSize(UINT nType, int cx, int cy)
@@ -229,14 +423,8 @@ void CfcalcDlg::OnSize(UINT nType, int cx, int cy)
 
 void CfcalcDlg::UpdateResult()
 {
-    if (!m_comboExpr.m_hWnd) {
-        TRACE(_T("m_comboExpr is not valid in UpdateResult!\n"));
-        return;
-    }
-
     CString expr;
     m_comboExpr.GetWindowText(expr);
-    TRACE(_T("UpdateResult: Input expression = '%s'\n"), expr);
     if (expr.IsEmpty()) {
         expr = _T("");
         sprintf_s(strings[0], 80, "%66.66s ", " ");
@@ -245,24 +433,20 @@ void CfcalcDlg::UpdateResult()
     SetWindowText(expr);
 
     int64_t iVal = 0;
-    float__t fVal = 0;
+    // Убрано: fVal = 0; // Не переинициализируем fVal
     char exprBuf[2048];
     memset(strings, 0, sizeof(strings));
     strncpy_s(exprBuf, CStringA(expr), sizeof(exprBuf) - 1);
     exprBuf[sizeof(exprBuf) - 1] = '\0';
-    TRACE(_T("UpdateResult: Converted to exprBuf = '%hs'\n"), exprBuf);
 
     ccalc->syntax(opts.options);
-    TRACE(_T("UpdateResult: Before evaluate, opts.options = %d\n"), opts.options);
     fVal = ccalc->evaluate(exprBuf, &iVal);
-    TRACE(_T("UpdateResult: After evaluate, fVal = %Lf, iVal = %lld\n"), fVal, iVal);
 
     int scfg = ccalc->issyntax();
     int n = 0;
 
     if (isnan(fVal)) {
         if (ccalc->error()[0]) {
-            TRACE(_T("UpdateResult: Error detected: %s\n"), ccalc->error());
             if (ccalc->errps() < 64) {
                 char binstr[80];
                 memset(binstr, '-', sizeof(binstr));
@@ -283,7 +467,7 @@ void CfcalcDlg::UpdateResult()
         }
     }
     else {
-        sprintf_s(strings[n++], 80, "Result: %.16Lg", fVal); // Формат %.16Lg
+        sprintf_s(strings[n++], 80, "Result: %.16Lg", fVal);
         if (iVal != 0) {
             for (int i = 0; i < ((iVal < 19) ? iVal : 19); i++)
                 sprintf_s(strings[n++], 80, "Int Value gy%d: %lld", i, iVal);
@@ -291,21 +475,15 @@ void CfcalcDlg::UpdateResult()
     }
 
     opts.options = ccalc->issyntax();
-    CMenu* pMenu = GetMenu();
-    if (pMenu) {
-        pMenu->CheckMenuItem(ID_CALC_CASESENSETIVE, MF_BYCOMMAND | (opts.upcase ? MF_CHECKED : MF_UNCHECKED));
-        pMenu->CheckMenuItem(ID_CALC_FORCEDFLOAT, MF_BYCOMMAND | (opts.ffloat ? MF_CHECKED : MF_UNCHECKED));
-        pMenu->CheckMenuItem(ID_FORMAT_SCIENTIFIC, MF_BYCOMMAND | (opts.scf ? MF_CHECKED : MF_UNCHECKED));
-    }
+    UpdateMenuFromOptions();
 
     CString resultText;
     int lineCount = 0;
-    for (int i = 0; i < 20 && strings[i][0] != '\0'; i++) {
+    for (int i = 0; i < 20 && strings[i][0]; i++) {
         resultText += CString(strings[i]) + _T("\r\n");
         lineCount++;
     }
     m_editResult.SetWindowText(resultText);
-    TRACE(_T("UpdateResult: SetWindowText completed with %d lines\n"), lineCount);
 
     int margin = 0;
     int titleBarHeight = GetSystemMetrics(SM_CYCAPTION);
@@ -320,58 +498,27 @@ void CfcalcDlg::UpdateResult()
 
 void CfcalcDlg::OnCalcPasStyle()
 {
-    opts.pas = !opts.pas;
-    ccalc->syntax(opts.options);
-    CMenu* pMenu = GetMenu();
-    if (pMenu) {
-        pMenu->ModifyMenu(ID_CALC_PASSTYLE, MF_BYCOMMAND | MF_STRING, ID_CALC_PASSTYLE,
-            opts.pas ? _T("Pas style") : _T("C style"));
-    }
-    UpdateResult();
+    UpdateOptions();
 }
 
 void CfcalcDlg::OnCalcCaseSensetive()
 {
-    opts.upcase = !opts.upcase;
-    ccalc->syntax(opts.options);
-    CMenu* pMenu = GetMenu();
-    if (pMenu) {
-        pMenu->CheckMenuItem(ID_CALC_CASESENSETIVE, MF_BYCOMMAND | (opts.upcase ? MF_CHECKED : MF_UNCHECKED));
-    }
-    UpdateResult();
+    UpdateOptions();
 }
 
 void CfcalcDlg::OnCalcForcedFloat()
 {
-    opts.ffloat = !opts.ffloat;
-    ccalc->syntax(opts.options);
-    CMenu* pMenu = GetMenu();
-    if (pMenu) {
-        pMenu->CheckMenuItem(ID_CALC_FORCEDFLOAT, MF_BYCOMMAND | (opts.ffloat ? MF_CHECKED : MF_UNCHECKED));
-    }
-    UpdateResult();
+    UpdateOptions();
 }
 
 void CfcalcDlg::OnFormatScientific()
 {
-    opts.scf = !opts.scf;
-    ccalc->syntax(opts.options);
-    CMenu* pMenu = GetMenu();
-    if (pMenu) {
-        pMenu->CheckMenuItem(ID_FORMAT_SCIENTIFIC, MF_BYCOMMAND | (opts.scf ? MF_CHECKED : MF_UNCHECKED));
-    }
-    UpdateResult();
+    UpdateOptions();
 }
 
-void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+void CfcalcDlg::OnFormatAll()
 {
-    TRACE(_T("OnKeyDown: nChar = %d\n"), nChar);
-    CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags); // Передаём событие дальше
-}
-
-void CfcalcDlg::OnBnClickedOk()
-{
-    UpdateResult();
+    UpdateOptionsAll();
 }
 
 HBRUSH CfcalcDlg::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
@@ -411,11 +558,6 @@ void CfcalcDlg::OnClose()
 
 void CfcalcDlg::SaveToRegistry()
 {
-    if (!m_comboExpr.m_hWnd) {
-        TRACE(_T("m_comboExpr is not valid in SaveToRegistry!\n"));
-        return;
-    }
-
     CRegKey regKey;
     if (ERROR_SUCCESS == regKey.Create(HKEY_CURRENT_USER, REG_KEY))
     {
@@ -463,4 +605,36 @@ void CfcalcDlg::LoadFromRegistry()
         }
     }
     regKey.Close();
+}
+
+void CfcalcDlg::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+    if (nChar == VK_RETURN) {
+        CString expr;
+        m_comboExpr.GetWindowText(expr);
+        if (!expr.IsEmpty()) {
+            int index = m_comboExpr.FindStringExact(-1, expr);
+            if (index == CB_ERR) {
+                m_comboExpr.InsertString(0, expr);
+                if (m_comboExpr.GetCount() > 100) m_comboExpr.DeleteString(100);
+            }
+        }
+    }
+    else if (nChar == VK_DELETE) {
+        int index = m_comboExpr.GetCurSel();
+        if (index != CB_ERR) {
+            m_comboExpr.DeleteString(index);
+            if (index < m_comboExpr.GetCount())
+                m_comboExpr.SetCurSel(index);
+            else if (m_comboExpr.GetCount())
+                m_comboExpr.SetCurSel(m_comboExpr.GetCount() - 1);
+            return;
+        }
+    }
+    CDialogEx::OnKeyDown(nChar, nRepCnt, nFlags);
+}
+
+void CfcalcDlg::OnBnClickedOk()
+{
+    CDialogEx::OnOK();
 }

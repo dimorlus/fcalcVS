@@ -25,12 +25,13 @@ protected:
     afx_msg void OnCalcCaseSensetive();
     afx_msg void OnCalcForcedFloat();
     afx_msg void OnFormatScientific();
+    afx_msg void OnFormatAll(); // Исправлено: ID_FORMAT_ALL
     afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
     afx_msg void OnNcPaint();
     afx_msg BOOL OnEraseBkgnd(CDC* pDC);
     afx_msg void OnClose();
     afx_msg void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags);
-    afx_msg void OnBnClickedOk(); // Обработчик для IDOK
+    afx_msg void OnBnClickedOk(); // Handler for IDOK
     DECLARE_MESSAGE_MAP()
 
 private:
@@ -48,6 +49,10 @@ private:
     void SaveToRegistry();
     void LoadFromRegistry();
     static const TCHAR* REG_KEY;
+
+    void UpdateMenuFromOptions();
+    void UpdateOptions();
+    void UpdateOptionsAll();
 
 public:
     virtual BOOL PreTranslateMessage(MSG* pMsg); // Add PreTranslateMessage for Enter handling
