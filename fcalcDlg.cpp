@@ -445,36 +445,6 @@ void CfcalcDlg::UpdateResult()
     int scfg = ccalc->issyntax();
     int n = 0;
     n = format_out(opts.options, scfg, 64, n, fVal, iVal, exprBuf, strings, ccalc);
-/*
-    if (isnan(fVal)) {
-        if (ccalc->error()[0]) {
-            if (ccalc->errps() < 64) {
-                char binstr[80];
-                memset(binstr, '-', sizeof(binstr));
-                binstr[ccalc->errps()] = '^';
-                binstr[ccalc->errps() + 1] = '\0';
-                sprintf_s(strings[n++], 80, "%-64s", binstr);
-                sprintf_s(strings[n++], 80, "%66.66s ", ccalc->error());
-            }
-            else {
-                sprintf_s(strings[n++], 80, "%66.66s ", ccalc->error());
-            }
-        }
-        else {
-            if (!expr.IsEmpty())
-                sprintf_s(strings[n++], 80, "%66.66s ", "NaN");
-            else
-                sprintf_s(strings[n++], 80, "%66.66s ", " ");
-        }
-    }
-    else {
-        sprintf_s(strings[n++], 80, "Result: %.16Lg", fVal);
-        if (iVal != 0) {
-            for (int i = 0; i < ((iVal < 19) ? iVal : 19); i++)
-                sprintf_s(strings[n++], 80, "Int Value gy%d: %lld", i, iVal);
-        }
-    }
-*/
     if (n == 0) n = 1;
 
     opts.options = ccalc->issyntax();
