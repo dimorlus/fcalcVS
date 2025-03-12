@@ -742,5 +742,6 @@ int format_out(int Options, int scfg, int binwide, int n, float__t fVal, int64_t
         }
     }
 
+    sprintf(strings[n++], "%65.64s", "Last line");
     return n;
 }
