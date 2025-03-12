@@ -32,9 +32,9 @@ CfcalcDlg::CfcalcDlg(CWnd* pParent /*=nullptr*/)
     : CDialogEx(IDD_FCALC_DIALOG, pParent)
 {
     m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
-    ccalc = new calculator(PAS | SCI | UPCASE);
     g_pDialog = this;
-    opts.options = PAS | SCI | UPCASE;
+    opts.options = PAS + SCI + UPCASE + FFLOAT + SCF + NRM + CMP + IGR + UNS + HEX + CHR + OCT + fBIN + DAT + DEG + STR + ALL + MNU + FRC + FRI;
+    ccalc = new calculator(opts.options);
     m_hEditBrush = CreateSolidBrush(RGB(255, 255, 255));
     fVal = 0; // Initialize fVal
 }
@@ -444,7 +444,8 @@ void CfcalcDlg::UpdateResult()
 
     int scfg = ccalc->issyntax();
     int n = 0;
-
+    n = format_out(opts.options, scfg, 64, n, fVal, iVal, exprBuf, strings, ccalc);
+/*
     if (isnan(fVal)) {
         if (ccalc->error()[0]) {
             if (ccalc->errps() < 64) {
@@ -473,13 +474,15 @@ void CfcalcDlg::UpdateResult()
                 sprintf_s(strings[n++], 80, "Int Value gy%d: %lld", i, iVal);
         }
     }
+*/
+    if (n == 0) n = 1;
 
     opts.options = ccalc->issyntax();
     UpdateMenuFromOptions();
 
     CString resultText;
     int lineCount = 0;
-    for (int i = 0; i < 20 && strings[i][0]; i++) {
+    for (int i = 0; i < n && strings[i][0]; i++) {
         resultText += CString(strings[i]) + _T("\r\n");
         lineCount++;
     }
@@ -597,7 +600,7 @@ void CfcalcDlg::LoadFromRegistry()
             }
         }
 
-        DWORD options = 0;
+        DWORD options = FFLOAT + SCF + NRM + CMP + IGR + UNS + HEX + CHR + OCT + fBIN + DAT + DEG + STR + ALL + MNU + FRC + FRI;
         if (ERROR_SUCCESS == regKey.QueryDWORDValue(_T("Options"), options))
         {
             opts.options = options;
