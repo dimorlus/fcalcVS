@@ -68,21 +68,21 @@ bool isNan(float__t d)
 }
 //---------------------------------------------------------------------------
 
-const unsigned __int64 dms[] =
+const uint64_t dms[] =
    {(60ull*60*60*24*36525ull),(6ull*6*24*36525),
     (60ull*60*24), (60ull*60), 60ull, 1ull};
 
-int t2str(char *str, __int64 sec)
+int t2str(char *str, uint64_t sec)
 {
  const char * fmt[] =
-   {"%d:c ", "%d:y ", "%d:d ", "%d:h ", "%d:m ", "%d:s "};
- unsigned int pt[6];
+   {"%lld:c ", "%lld:y ", "%lld:d ", "%lld:h ", "%lld:m ", "%lld:s "};
+ uint64_t pt[6];
  int i, j, k;
  char *pc = str;
 
  for(i = 0, j = -1, k = 0; i < 6; i++)
   {
-    pt[i] = (unsigned int)(sec / dms[i]);
+    pt[i] = (uint64_t)(sec / dms[i]);
     sec %= dms[i];
     if ((j == -1) && (pt[i] != 0)) j = i;
     if ((j != -1) && (pt[i] != 0)) k = i;
@@ -97,7 +97,7 @@ int t2str(char *str, __int64 sec)
 //---------------------------------------------------------------------------
 
 /* convert int to bin according format %10b */
-int b2str(char *str, const char *fmt, unsigned __int64 b)
+int b2str(char *str, const char *fmt, uint64_t b)
 {
   char c;
   bool flag = false;
@@ -105,7 +105,7 @@ int b2str(char *str, const char *fmt, unsigned __int64 b)
   char *ws = NULL;
   unsigned int wide;
   unsigned int i,w=0;
-  unsigned __int64 mask;
+  uint64_t mask;
 
   while(0 != (c = *fmt++))
    {
@@ -319,12 +319,12 @@ int chr2str(char *str, unsigned char c)
  else return sprintf(str, "'%c'", c);
 }
 //---------------------------------------------------------------------------
-int wchr2str(char *str, int i)
+int wchr2str1(char *str, int i)
 {
  wchar_t wbuf[2];
  char cbuf[8];
 
- wbuf[0] = (wchar_t)i;
+ wbuf[0] = (wchar_t)i&0xffff;
  wbuf[1] = L'\0';
 
  // Заменяем WideCharToMultiByte на стандартную функцию
@@ -332,24 +332,24 @@ int wchr2str(char *str, int i)
  return sprintf(str, "'%s'W", cbuf);
 }
 
-//int wchr2str(char *str, int i)
-//{
-//#ifdef _WIN_
-//  wchar_t wbuf[2];
-//  char cbuf[8];
+int wchr2str(char *str, int i)
+{
+#ifdef _WIN_
+  wchar_t wbuf[2];
+  char cbuf[8];
 
-//  wbuf[0] = *(wchar_t *)&i;
-//  wbuf[1] = L'\0';
+  wbuf[0] = *(wchar_t *)&i;
+  wbuf[1] = L'\0';
 
 
-//  WideCharToMultiByte(CP_OEMCP, 0, wbuf, -1,
-//               (LPSTR)cbuf, 4, NULL, NULL);
-//  return sprintf(str, "'%s'W", cbuf);
-//#else /*_WIN_*/
-// *str = '\0';
-// return 0;
-//#endif  /*_WIN_*/
-//}
+  WideCharToMultiByte(CP_OEMCP, 0, wbuf, -1,
+               (LPSTR)cbuf, 4, NULL, NULL);
+  return sprintf(str, "'%s'W", cbuf);
+#else /*_WIN_*/
+ *str = '\0';
+ return 0;
+#endif  /*_WIN_*/
+}
 //---------------------------------------------------------------------------
 
 //   https://support.microsoft.com/en-us/help/167296/how-to-convert-a-unix-time-t-to-a-win32-filetime-or-systemtime
@@ -367,7 +367,7 @@ int wchr2str(char *str, int i)
 //     pft->dwHighDateTime = ll >> 32;
 //   }
 
-int nx_time2str(char *str, int64_t time)
+int nx_time2str(char *str, uint64_t time)
 {
   struct tm t;
   gmtime_s(&t, (time_t*)&time);  // Используем безопасную версию функции
@@ -680,7 +680,8 @@ int format_out(int Options, int scfg, int binwide, int n, float__t fVal, int64_t
         // (RO) WChar format found
         if ((Options & WCH) || (scfg & WCH)) {
             char wchrstr[80];
-            wchr2str(wchrstr, iVal);
+            int i = iVal & 0xffff;
+            wchr2str(wchrstr, i);
             if (Options & AUTO) {
                 if ((fVal - iVal) == 0)
                     sprintf(strings[n++], "%64.64s  c", wchrstr);
@@ -693,6 +694,7 @@ int format_out(int Options, int scfg, int binwide, int n, float__t fVal, int64_t
         if ((Options & DAT) || (scfg & DAT)) {
             char dtstr[80];
             t2str(dtstr, iVal);
+            //sprintf(dtstr, "datatime");
             if (Options & AUTO) {
                 if ((fVal - iVal) == 0)
                     sprintf(strings[n++], "%65.64s", dtstr);
@@ -742,5 +744,5 @@ int format_out(int Options, int scfg, int binwide, int n, float__t fVal, int64_t
         }
     }
 
-    return n;
+    return n++;
 }
